@@ -1,3 +1,5 @@
+from functools import cache
+
 import torch
 import torch.distributed as dist
 from torch.autograd import grad
@@ -18,6 +20,20 @@ def exists(v):
 
 def default(v, d):
     return v if exists(v) else d
+
+# distributed helpers
+
+@cache
+def is_distributed():
+    return dist.is_initialized() and dist.get_world_size() > 1
+
+def maybe_distributed_mean(t):
+    local_mean = t.mean()
+
+    if not is_distributed():
+        return local_mean
+
+    return dist.all_reduce(local_mean, dist.ReduceOp.MEAN)
 
 # main class
 
