@@ -22,7 +22,7 @@ Basic static loss weighting
 import torch
 
 from gradnorm_pytorch import (
-    GradNorm,
+    GradNormLossWeighter,
     MockNetworkWithMultipleLosses
 )
 
@@ -33,14 +33,14 @@ network = MockNetworkWithMultipleLosses(
 
 x = torch.randn(2, 512)
 
-gradnorm = GradNorm(
+loss_weighter = GradNormLossWeighter(
     [1., 1., 1., 1.],
     frozen = True
 )
 
 total_loss, _ = network(x)
 
-gradnorm.backward(total_loss)
+loss_weighter.backward(total_loss)
 ```
 
 ## Citations

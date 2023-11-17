@@ -37,7 +37,7 @@ def maybe_distributed_mean(t):
 
 # main class
 
-class GradNormLossWeighting(Module):
+class GradNormLossWeighter(Module):
     @beartype
     def __init__(
         self,
