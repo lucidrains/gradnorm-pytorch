@@ -45,11 +45,12 @@ class GradNormLossWeighter(Module):
     @beartype
     def __init__(
         self,
-        loss_weights: Union[
+        *,
+        num_losses: Optional[int] = None,
+        loss_weights: Optional[Union[
             List[float],
             Tensor
-        ],
-        *,
+        ]] = None,
         learning_rate = 1e-4,
         restoring_force_alpha = 0.,
         grad_norm_parameters: Optional[Parameter] = None,
@@ -57,13 +58,17 @@ class GradNormLossWeighter(Module):
         frozen = False
     ):
         super().__init__()
+        assert exists(num_losses) ^ exists(loss_weights)
 
+        if exists(num_losses):
+            loss_weights = torch.ones((num_losses,)).float()
+            num_losses = num_losses
         if isinstance(loss_weights, list):
             loss_weights = torch.tensor(loss_weights)
+            num_losses = loss_weights.numel()
 
+        assert num_losses > 1, 'only makes sense if you have multiple losses'
         assert loss_weights.ndim == 1, 'loss weights must be 1 dimensional'
-
-        num_losses = loss_weights.numel()
 
         self.accelerator = accelerator
         self.num_losses = num_losses
@@ -124,6 +129,7 @@ class GradNormLossWeighter(Module):
             losses = torch.stack(losses)
 
         assert losses.ndim == 1, 'losses must be 1 dimensional'
+        assert losses.numel() == self.num_losses, f'you instantiated with {self.num_losses} losses but passed in {losses.numel()} losses'
 
         # handle base frozen case, so one can freeze the weights after a certain number of steps, or just to a/b test against learned gradnorm loss weights
 

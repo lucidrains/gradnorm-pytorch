@@ -42,7 +42,7 @@ backbone_parameter = network.backbone[-1].weight
 # grad norm based loss weighter
 
 loss_weighter = GradNormLossWeighter(
-    [1., 1., 1., 1.],
+    num_losses = 4,
     learning_rate = 1.,
     grad_norm_parameters = backbone_parameter,
     frozen = False
