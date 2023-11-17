@@ -8,6 +8,41 @@ Increasingly starting to come across neural network architectures that require m
 
 Will be dog-fooded for <a href="http://github.com/lucidrains/audiolm-pytorch">SoundStream</a>, <a href="https://github.com/lucidrains/magvit2-pytorch">MagViT2</a> as well as <a href="https://github.com/lucidrains/metnet-3">MetNet3</a>
 
+## Install
+
+```bash
+$ pip install gradnorm-pytorch
+```
+
+## Usage
+
+Basic static loss weighting
+
+```python
+import torch
+
+from gradnorm_pytorch import (
+    GradNorm,
+    MockNetworkWithMultipleLosses
+)
+
+network = MockNetworkWithMultipleLosses(
+    dim = 512,
+    num_losses = 4
+)
+
+x = torch.randn(2, 512)
+
+gradnorm = GradNorm(
+    [1., 1., 1., 1.],
+    frozen = True
+)
+
+total_loss, _ = network(x)
+
+gradnorm.backward(total_loss)
+```
+
 ## Citations
 
 ```bibtex

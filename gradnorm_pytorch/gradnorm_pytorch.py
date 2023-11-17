@@ -1,4 +1,6 @@
 import torch
+import torch.distributed as dist
+from torch.autograd import grad
 from torch import nn, einsum, Tensor
 from torch.nn import Module, ModuleList
 
@@ -44,6 +46,9 @@ class GradNorm(Module):
 
         self.register_buffer('step', torch.tensor(0.))
 
+    def backward(self, *args, **kwargs):
+        return self.forward(*args, **kwargs)
+
     @beartype
     def forward(
         self,
@@ -52,17 +57,26 @@ class GradNorm(Module):
             Tensor
         ]
     ):
-        backwards = self.accelerator.backward if exists(self.accelerator.backward) else lambda l: l.backward()
+        # backward functions dependent on whether using hf accelerate or not
+
+        backward = self.accelerator.backward if exists(self.accelerator) else lambda l: l.backward()
+
+        # validate that all the losses are a single scalar
+
+        assert all([loss.numel() == 1 for loss in losses])
+
+        # cast losses to tensor form
 
         if isinstance(losses, list):
             losses = torch.stack(losses)
 
         assert losses.ndim == 1, 'losses must be 1 dimensional'
 
-        total_weighted_loss = (losses * self.loss_weights).sum()
+        # handle base frozen case, so one can freeze the weights after a certain number of steps, or just to a/b test against learned gradnorm loss weights
 
-        # backward functions dependent on whether using hf accelerate or not
+        if self.frozen:
+            total_weighted_loss = (losses * self.loss_weights).sum()
+            backward(total_weighted_loss)
+            return total_weighted_loss
 
-        backwards(total_weighted_loss)
-
-        return total_weighted_loss
+        raise NotImplementedError
