@@ -56,7 +56,7 @@ total_loss, backbone_output_activations = network(mock_input)
 # backwards with the loss weights
 # will update on each backward based on gradnorm algorithm
 
-loss_weighter.backward(total_loss)
+loss_weighter.backward(total_loss, retain_graph = True)
 
 # if you would like to update the loss weights wrt activations just do the following instead
 
@@ -66,28 +66,14 @@ loss_weighter.backward(total_loss, backbone_output_activations)
 You can also switch it to basic static loss weighting, in case you want to run experiments against fixed weighting.
 
 ```python
-import torch
-
-from gradnorm_pytorch import (
-    GradNormLossWeighter,
-    MockNetworkWithMultipleLosses
-)
-
-network = MockNetworkWithMultipleLosses(
-    dim = 512,
-    num_losses = 4
-)
-
-x = torch.randn(2, 512)
-
 loss_weighter = GradNormLossWeighter(
-    [1., 1., 1., 1.],
+    ...,
     frozen = True
 )
 
-total_loss, _ = network(x)
+# or you can also freeze it on invoking the instance
 
-loss_weighter.backward(total_loss)
+loss_weighter.backward(..., freeze = True)
 ```
 
 For use with Huggingface Accelerate, just pass in the `Accelerator` instance into the keyword `accelerator` on initialization
@@ -100,6 +86,7 @@ accelerator = Accelerator()
 network = accelerator.prepare(network)
 
 loss_weighter = GradNormLossWeighter(
+    ...,
     acceleror = accelerator
 )
 

@@ -1,4 +1,4 @@
-from functools import cache
+from functools import cache, partial
 
 import torch
 import torch.distributed as dist
@@ -106,11 +106,13 @@ class GradNormLossWeighter(Module):
             Tensor
         ],
         shared_activations: Optional[Tensor] = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
-        freeze = False                                   # can additionally freeze a learnable network on forward
+        freeze = False,                                  # can additionally freeze a learnable network on forward
+        **backward_kwargs
     ):
         # backward functions dependent on whether using hf accelerate or not
 
         backward = self.accelerator.backward if exists(self.accelerator) else lambda l: l.backward()
+        backward = partial(backward, **backward_kwargs)
 
         # validate that all the losses are a single scalar
 
