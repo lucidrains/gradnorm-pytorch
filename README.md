@@ -51,16 +51,16 @@ loss_weighter = GradNormLossWeighter(
 # mock input
 
 mock_input = torch.randn(2, 512)
-total_loss, backbone_output_activations = network(mock_input)
+losses, backbone_output_activations = network(mock_input)
 
 # backwards with the loss weights
 # will update on each backward based on gradnorm algorithm
 
-loss_weighter.backward(total_loss, retain_graph = True)
+loss_weighter.backward(losses, retain_graph = True)
 
 # if you would like to update the loss weights wrt activations just do the following instead
 
-loss_weighter.backward(total_loss, backbone_output_activations)
+loss_weighter.backward(losses, backbone_output_activations)
 ```
 
 You can also switch it to basic static loss weighting, in case you want to run experiments against fixed weighting.
