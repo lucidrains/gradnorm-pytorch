@@ -17,6 +17,7 @@ setup(
     'gradient normalization'
   ],
   install_requires=[
+    'accelerate',
     'beartype',
     'einops>=0.7.0',
     'torch>=2.0'
