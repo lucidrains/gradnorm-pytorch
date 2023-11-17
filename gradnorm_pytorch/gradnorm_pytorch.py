@@ -3,6 +3,7 @@ from functools import cache
 import torch
 import torch.distributed as dist
 from torch.autograd import grad
+import torch.nn.functional as F
 from torch import nn, einsum, Tensor
 from torch.nn import Module, ModuleList, Parameter
 
@@ -21,6 +22,11 @@ def exists(v):
 def default(v, d):
     return v if exists(v) else d
 
+# tensor helpers
+
+def l1norm(t, dim = -1):
+    return F.normalize(t, p = 1, dim = dim)
+
 # distributed helpers
 
 @cache
@@ -28,12 +34,10 @@ def is_distributed():
     return dist.is_initialized() and dist.get_world_size() > 1
 
 def maybe_distributed_mean(t):
-    local_mean = t.mean()
-
     if not is_distributed():
-        return local_mean
+        return t
 
-    return dist.all_reduce(local_mean, dist.ReduceOp.MEAN)
+    return dist.all_reduce(t, dist.ReduceOp.MEAN)
 
 # main class
 
@@ -46,7 +50,9 @@ class GradNormLossWeighter(Module):
             Tensor
         ],
         *,
-        grad_norm_layer: Optional[Parameter] = None,
+        learning_rate = 1e-4,
+        restoring_force_alpha = 0.,
+        grad_norm_parameters: Optional[Parameter] = None,
         accelerator: Optional[Accelerator] = None,
         frozen = False
     ):
@@ -56,7 +62,6 @@ class GradNormLossWeighter(Module):
             loss_weights = torch.tensor(loss_weights)
 
         assert loss_weights.ndim == 1, 'loss weights must be 1 dimensional'
-        assert frozen, 'only frozen implemented'
 
         num_losses = loss_weights.numel()
 
@@ -64,23 +69,31 @@ class GradNormLossWeighter(Module):
         self.num_losses = num_losses
         self.frozen = frozen
 
-        self._grad_norm_layer = [grad_norm_layer] # hack
+        self.alpha = restoring_force_alpha
+
+        self._grad_norm_parameters = [grad_norm_parameters] # hack
 
         # loss weights, either learned or static
 
-        self.loss_weights = Parameter(loss_weights, requires_grad = not frozen)
+        self.register_buffer('loss_weights', loss_weights)
+
+        self.learning_rate = learning_rate
 
         # todo: figure out how best to smooth L0 over course of training, in case initialization of network is not great
 
-        self.register_buffer('initial_loss', torch.zeros(num_losses))
+        self.register_buffer('initial_losses', torch.zeros(num_losses))
+
+        # for renormalizing loss weights at end
+
+        self.register_buffer('loss_weights_sum', self.loss_weights.sum())
 
         # step, for maybe having schedules etc
 
         self.register_buffer('step', torch.tensor(0.))
 
     @property
-    def grad_norm_layer(self):
-        return self._grad_norm_layer[0]
+    def grad_norm_parameters(self):
+        return self._grad_norm_parameters[0]
 
     def backward(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
@@ -92,8 +105,8 @@ class GradNormLossWeighter(Module):
             List[Tensor],
             Tensor
         ],
-        shared_tensor: Optional[Tensor] = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
-        freeze = False                              # can additionally freeze a learnable network on forward
+        shared_activations: Optional[Tensor] = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
+        freeze = False                                   # can additionally freeze a learnable network on forward
     ):
         # backward functions dependent on whether using hf accelerate or not
 
@@ -112,19 +125,61 @@ class GradNormLossWeighter(Module):
 
         # handle base frozen case, so one can freeze the weights after a certain number of steps, or just to a/b test against learned gradnorm loss weights
 
-        if self.frozen or freeze:
+        if self.frozen or freeze or not self.training:
             total_weighted_loss = (losses * self.loss_weights.detach()).sum()
             backward(total_weighted_loss)
             return total_weighted_loss
 
+        # store initial loss
+
+        if self.step.item() == 0:
+            initial_losses = maybe_distributed_mean(losses)
+            self.initial_losses.copy_(initial_losses)
+
         # determine which tensor to get grad norm from
 
-        grad_norm_tensor = default(shared_tensor, self.grad_norm_layer)
+        grad_norm_tensor = default(shared_activations, self.grad_norm_parameters)
 
-        assert grad_norm_tensor.requires_grad, 'requires grad must be turned on for the tensor for deriving grad norm'
+        assert exists(grad_norm_tensor), 'you need to either set `grad_norm_parameters` on init or `shared_activations` on backwards'
+
+        grad_norm_tensor.requires_grad_()
+
+        # get grad norm with respect to each loss
+
+        grad_norms = []
+        loss_weights = self.loss_weights.clone()
+        loss_weights = Parameter(loss_weights)
+
+        for weight, loss in zip(loss_weights, losses):
+            gradients, = grad(weight * loss, grad_norm_tensor, create_graph = True, retain_graph = True)
+
+            grad_norm = gradients.norm(p = 2)
+            grad_norms.append(grad_norm)
+
+        grad_norms = torch.stack(grad_norms)
+
+        # main algorithm for loss balancing
+
+        grad_norm_average = maybe_distributed_mean(grad_norms.mean())
+
+        loss_ratio = losses.detach() / self.initial_losses
+
+        relative_training_rate = l1norm(loss_ratio)
+
+        gradient_target = (grad_norm_average * (relative_training_rate ** self.alpha)).detach()
+
+        grad_norm_loss = F.l1_loss(grad_norms, gradient_target)
+
+        backward(grad_norm_loss)
+
+        # manually take a single gradient step
+
+        updated_loss_weights = loss_weights - loss_weights.grad * self.learning_rate
+
+        renormalized_loss_weights = l1norm(updated_loss_weights) * self.loss_weights_sum
+
+        self.loss_weights.copy_(renormalized_loss_weights)
 
         # increment step
 
         self.step.add_(1)
-
-        raise NotImplementedError
