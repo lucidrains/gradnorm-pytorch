@@ -55,7 +55,8 @@ class GradNormLossWeighter(Module):
         restoring_force_alpha = 0.,
         grad_norm_parameters: Optional[Parameter] = None,
         accelerator: Optional[Accelerator] = None,
-        frozen = False
+        frozen = False,
+        initial_losses_decay = 1.
     ):
         super().__init__()
         assert exists(num_losses) ^ exists(loss_weights)
@@ -84,7 +85,11 @@ class GradNormLossWeighter(Module):
 
         self.learning_rate = learning_rate
 
-        # todo: figure out how best to smooth L0 over course of training, in case initialization of network is not great
+        # initial loss
+        # if initial loss decay set to less than 1, will EMA smooth the initial loss
+
+        assert 0 <= initial_losses_decay <= 1.
+        self.initial_losses_decay = initial_losses_decay
 
         self.register_buffer('initial_losses', torch.zeros(num_losses))
 
@@ -152,6 +157,10 @@ class GradNormLossWeighter(Module):
             initial_losses = maybe_distributed_mean(losses)
             self.initial_losses.copy_(initial_losses)
 
+        elif self.initial_losses_decay < 1.:
+            meaned_losses = maybe_distributed_mean(losses)
+            self.initial_losses.lerp_(meaned_losses, 1. - self.initial_losses_decay)
+
         # determine which tensor to get grad norm from
 
         grad_norm_tensor = default(activations, self.grad_norm_parameters)
@@ -192,6 +201,10 @@ class GradNormLossWeighter(Module):
 
         self.loss_weights_grad.add_(loss_weights.grad)
 
+        # increment step
+
+        self.step.add_(1)
+
         if not grad_step:
             return
 
@@ -204,7 +217,3 @@ class GradNormLossWeighter(Module):
         self.loss_weights.copy_(renormalized_loss_weights)
 
         self.loss_weights_grad.zero_()
-
-        # increment step
-
-        self.step.add_(1)
