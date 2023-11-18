@@ -67,6 +67,7 @@ You can also switch it to basic static loss weighting, in case you want to run e
 
 ```python
 loss_weighter = GradNormLossWeighter(
+    loss_weights = [1., 10., 5., 2.],
     ...,
     frozen = True
 )

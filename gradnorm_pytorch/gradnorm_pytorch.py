@@ -60,15 +60,17 @@ class GradNormLossWeighter(Module):
         initial_losses_decay = 1.
     ):
         super().__init__()
-        assert exists(num_losses) ^ exists(loss_weights)
+        assert exists(num_losses) or exists(loss_weights)
 
-        if exists(num_losses):
-            loss_weights = torch.ones((num_losses,)).float()
-            num_losses = num_losses
-        if isinstance(loss_weights, list):
-            loss_weights = torch.tensor(loss_weights)
-            num_losses = loss_weights.numel()
+        if exists(loss_weights):
+            if isinstance(loss_weights, list):
+                loss_weights = torch.tensor(loss_weights)
 
+            num_losses = default(num_losses, loss_weights.numel())
+        else:
+            loss_weights = torch.ones((num_losses,), dtype = torch.float32)
+
+        assert len(loss_weights) == num_losses
         assert num_losses > 1, 'only makes sense if you have multiple losses'
         assert loss_weights.ndim == 1, 'loss weights must be 1 dimensional'
 
