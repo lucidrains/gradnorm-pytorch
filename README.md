@@ -43,10 +43,9 @@ backbone_parameter = network.backbone[-1].weight
 
 loss_weighter = GradNormLossWeighter(
     num_losses = 4,
-    learning_rate = 1.,
+    learning_rate = 1e-4,
     restoring_force_alpha = 0.,                  # 0. is perfectly balanced losses, while anything greater than 1 would account for the relative training rates of each loss. in the paper, they go as high as 3.
-    grad_norm_parameters = backbone_parameter,
-    frozen = False
+    grad_norm_parameters = backbone_parameter
 )
 
 # mock input
@@ -88,7 +87,7 @@ network = accelerator.prepare(network)
 
 loss_weighter = GradNormLossWeighter(
     ...,
-    acceleror = accelerator
+    accelerator = accelerator
 )
 
 # backwards will now use accelerator
