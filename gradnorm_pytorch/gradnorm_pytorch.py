@@ -155,7 +155,7 @@ class GradNormLossWeighter(Module):
 
         total_weighted_loss = (losses * self.loss_weights.detach()).sum()
 
-        backward(total_weighted_loss * scale, **{**backward_kwargs, 'retain_graph': True})
+        backward(total_weighted_loss * scale, **{**backward_kwargs, 'retain_graph': not freeze})
 
         # handle base frozen case, so one can freeze the weights after a certain number of steps, or just to a/b test against learned gradnorm loss weights
 
