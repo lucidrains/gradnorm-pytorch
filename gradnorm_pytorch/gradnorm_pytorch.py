@@ -144,8 +144,14 @@ class GradNormLossWeighter(Module):
 
         # loss can be passed in as a dictionary of Dict[str, Tensor], will be ordered by the `loss_names` passed in on init
 
+        if isinstance(losses, tuple) and hasattr(losses, '_asdict'):
+            losses = losses._asdict()
+
         if isinstance(losses, dict):
             assert exists(self.loss_names)
+            input_loss_names = set(losses.keys())
+            assert input_loss_names == set(self.loss_names), f'expect losses named {self.loss_names} but received {input_loss_names}'
+
             losses = [losses[name] for name in self.loss_names]
 
         # validate that all the losses are a single scalar
