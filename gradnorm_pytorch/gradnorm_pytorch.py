@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch import nn, einsum, Tensor
 from torch.nn import Module, ModuleList, Parameter
 
-from einops import rearrange
+from einops import rearrange, repeat
 
 from accelerate import Accelerator
 
@@ -80,6 +80,7 @@ class GradNormLossWeighter(Module):
         assert not exists(loss_names) or len(loss_names) == num_losses
 
         self.alpha = restoring_force_alpha
+        self.has_restoring_force = self.alpha > 0
 
         self._grad_norm_parameters = [grad_norm_parameters] # hack
 
@@ -164,13 +165,14 @@ class GradNormLossWeighter(Module):
 
         # store initial loss
 
-        if self.step.item() == 0:
-            initial_losses = maybe_distributed_mean(losses)
-            self.initial_losses.copy_(initial_losses)
+        if self.has_restoring_force:
+            if self.step.item() == 0:
+                initial_losses = maybe_distributed_mean(losses)
+                self.initial_losses.copy_(initial_losses)
 
-        elif self.initial_losses_decay < 1.:
-            meaned_losses = maybe_distributed_mean(losses)
-            self.initial_losses.lerp_(meaned_losses, 1. - self.initial_losses_decay)
+            elif self.initial_losses_decay < 1.:
+                meaned_losses = maybe_distributed_mean(losses)
+                self.initial_losses.lerp_(meaned_losses, 1. - self.initial_losses_decay)
 
         # determine which tensor to get grad norm from
 
@@ -198,11 +200,14 @@ class GradNormLossWeighter(Module):
 
         grad_norm_average = maybe_distributed_mean(grad_norms.mean())
 
-        loss_ratio = losses.detach() / self.initial_losses
+        if self.has_restoring_force:
+            loss_ratio = losses.detach() / self.initial_losses
 
-        relative_training_rate = l1norm(loss_ratio) * self.num_losses
+            relative_training_rate = l1norm(loss_ratio) * self.num_losses
 
-        gradient_target = (grad_norm_average * (relative_training_rate ** self.alpha)).detach()
+            gradient_target = (grad_norm_average * (relative_training_rate ** self.alpha)).detach()
+        else:
+            gradient_target = repeat(grad_norm_average, ' -> l', l = self.num_losses).detach()
 
         grad_norm_loss = F.l1_loss(grad_norms, gradient_target)
 
