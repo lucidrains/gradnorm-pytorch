@@ -12,7 +12,8 @@ from einops import rearrange, repeat
 from accelerate import Accelerator
 
 from beartype import beartype
-from beartype.typing import Optional, Union, List, Dict, Tuple
+from beartype.door import is_bearable
+from beartype.typing import Optional, Union, List, Dict, Tuple, NamedTuple
 
 # helper functions
 
@@ -127,6 +128,7 @@ class GradNormLossWeighter(Module):
         losses: Union[
             Dict[str, Tensor],
             List[Tensor],
+            Tuple[Tensor],
             Tensor
         ],
         activations: Optional[Tensor] = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
@@ -152,7 +154,7 @@ class GradNormLossWeighter(Module):
 
         # cast losses to tensor form
 
-        if isinstance(losses, list):
+        if isinstance(losses, (list, tuple)):
             losses = torch.stack(losses)
 
         assert losses.ndim == 1, 'losses must be 1 dimensional'
