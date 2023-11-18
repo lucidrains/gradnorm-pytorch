@@ -151,7 +151,7 @@ class GradNormLossWeighter(Module):
 
         grad_norm_tensor = default(activations, self.grad_norm_parameters)
 
-        assert exists(grad_norm_tensor), 'you need to either set `grad_norm_parameters` on init or `shared_activations` on backwards'
+        assert exists(grad_norm_tensor), 'you need to either set `grad_norm_parameters` on init or `activations` on backwards'
 
         grad_norm_tensor.requires_grad_()
 
