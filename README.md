@@ -76,7 +76,7 @@ loss_weighter = GradNormLossWeighter(
 loss_weighter.backward(..., freeze = True)
 ```
 
-For use with Huggingface Accelerate, just pass in the `Accelerator` instance into the keyword `accelerator` on initialization
+For use with <a href="https://huggingface.co/">🤗 Huggingface Accelerate</a>, just pass in the `Accelerator` instance into the keyword `accelerator` on initialization
 
 ex.
 
