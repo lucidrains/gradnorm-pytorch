@@ -79,6 +79,8 @@ class GradNormLossWeighter(Module):
         self.loss_names = loss_names
         assert not exists(loss_names) or len(loss_names) == num_losses
 
+        assert restoring_force_alpha >= 0.
+
         self.alpha = restoring_force_alpha
         self.has_restoring_force = self.alpha > 0
 
