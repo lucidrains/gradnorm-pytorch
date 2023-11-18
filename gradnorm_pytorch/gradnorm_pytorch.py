@@ -92,6 +92,10 @@ class GradNormLossWeighter(Module):
 
         self.register_buffer('loss_weights_sum', self.loss_weights.sum())
 
+        # for gradient accumulation
+
+        self.register_buffer('loss_weights_grad', torch.zeros_like(loss_weights), persistent = False)
+
         # step, for maybe having schedules etc
 
         self.register_buffer('step', torch.tensor(0.))
@@ -111,8 +115,9 @@ class GradNormLossWeighter(Module):
             Tensor
         ],
         activations: Optional[Tensor] = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
-        freeze = False,                                  # can additionally freeze a learnable network on forward
+        freeze = False,                           # can optionally freeze the learnable loss weights on forward
         scale = 1.,
+        grad_step = True,
         **backward_kwargs
     ):
         # backward functions dependent on whether using hf accelerate or not
@@ -183,13 +188,22 @@ class GradNormLossWeighter(Module):
 
         backward(grad_norm_loss * scale)
 
+        # accumulate gradients
+
+        self.loss_weights_grad.add_(loss_weights.grad)
+
+        if not grad_step:
+            return
+
         # manually take a single gradient step
 
-        updated_loss_weights = loss_weights - loss_weights.grad * self.learning_rate
+        updated_loss_weights = loss_weights - self.loss_weights_grad * self.learning_rate
 
         renormalized_loss_weights = l1norm(updated_loss_weights) * self.loss_weights_sum
 
         self.loss_weights.copy_(renormalized_loss_weights)
+
+        self.loss_weights_grad.zero_()
 
         # increment step
 
