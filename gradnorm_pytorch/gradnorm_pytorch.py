@@ -112,7 +112,7 @@ class GradNormLossWeighter(Module):
         ],
         activations: Optional[Tensor] = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
         freeze = False,                                  # can additionally freeze a learnable network on forward
-        total_loss_weight = 1.,
+        scale = 1.,
         **backward_kwargs
     ):
         # backward functions dependent on whether using hf accelerate or not
@@ -132,13 +132,13 @@ class GradNormLossWeighter(Module):
         assert losses.ndim == 1, 'losses must be 1 dimensional'
         assert losses.numel() == self.num_losses, f'you instantiated with {self.num_losses} losses but passed in {losses.numel()} losses'
 
+        total_weighted_loss = (losses * self.loss_weights.detach()).sum()
+
+        backward(total_weighted_loss * scale, **{**backward_kwargs, 'retain_graph': True})
+
         # handle base frozen case, so one can freeze the weights after a certain number of steps, or just to a/b test against learned gradnorm loss weights
 
         if self.frozen or freeze or not self.training:
-            total_weighted_loss = (losses * self.loss_weights.detach()).sum()
-            total_weighted_loss = total_weighted_loss * total_loss_weight
-
-            backward(total_weighted_loss)
             return total_weighted_loss
 
         # store initial loss
@@ -181,7 +181,7 @@ class GradNormLossWeighter(Module):
 
         grad_norm_loss = F.l1_loss(grad_norms, gradient_target)
 
-        backward(grad_norm_loss)
+        backward(grad_norm_loss * scale)
 
         # manually take a single gradient step
 
