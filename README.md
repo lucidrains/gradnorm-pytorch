@@ -95,7 +95,7 @@ loss_weighter = GradNormLossWeighter(
 
 ## Todo
 
-- [ ] take care of gradient accumulation
+- [x] take care of gradient accumulation
 
 ## Citations
 
