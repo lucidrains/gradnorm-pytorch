@@ -12,7 +12,7 @@ from einops import rearrange
 from accelerate import Accelerator
 
 from beartype import beartype
-from beartype.typing import Optional, Union, List
+from beartype.typing import Optional, Union, List, Dict, Tuple
 
 # helper functions
 
@@ -51,6 +51,7 @@ class GradNormLossWeighter(Module):
             List[float],
             Tensor
         ]] = None,
+        loss_names: Optional[Tuple[str, ...]] = None,
         learning_rate = 1e-4,
         restoring_force_alpha = 0.,
         grad_norm_parameters: Optional[Parameter] = None,
@@ -74,6 +75,9 @@ class GradNormLossWeighter(Module):
         self.accelerator = accelerator
         self.num_losses = num_losses
         self.frozen = frozen
+
+        self.loss_names = loss_names
+        assert not exists(loss_names) or len(loss_names) == num_losses
 
         self.alpha = restoring_force_alpha
 
@@ -116,6 +120,7 @@ class GradNormLossWeighter(Module):
     def forward(
         self,
         losses: Union[
+            Dict[str, Tensor],
             List[Tensor],
             Tensor
         ],
@@ -129,6 +134,12 @@ class GradNormLossWeighter(Module):
 
         backward = self.accelerator.backward if exists(self.accelerator) else lambda l: l.backward()
         backward = partial(backward, **backward_kwargs)
+
+        # loss can be passed in as a dictionary of Dict[str, Tensor], will be ordered by the `loss_names` passed in on init
+
+        if isinstance(losses, dict):
+            assert exists(self.loss_names)
+            losses = [losses[name] for name in self.loss_names]
 
         # validate that all the losses are a single scalar
 
