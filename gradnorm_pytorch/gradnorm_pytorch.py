@@ -58,7 +58,9 @@ class GradNormLossWeighter(Module):
         grad_norm_parameters: Optional[Parameter] = None,
         accelerator: Optional[Accelerator] = None,
         frozen = False,
-        initial_losses_decay = 1.
+        initial_losses_decay = 1.,
+        update_after_step = 0.,
+        update_every = 1.
     ):
         super().__init__()
         assert exists(num_losses) or exists(loss_weights)
@@ -115,6 +117,13 @@ class GradNormLossWeighter(Module):
 
         self.register_buffer('step', torch.tensor(0.))
 
+        # can update less frequently, to save on compute
+
+        self.update_after_step = update_after_step
+        self.update_every = update_every
+
+        self.register_buffer('initted', torch.tensor(False))
+
     @property
     def grad_norm_parameters(self):
         return self._grad_norm_parameters[0]
@@ -141,6 +150,12 @@ class GradNormLossWeighter(Module):
 
         backward = self.accelerator.backward if exists(self.accelerator) else lambda l: l.backward()
         backward = partial(backward, **backward_kwargs)
+
+        # increment step
+
+        step = self.step.item()
+
+        self.step.add_(int(grad_step))
 
         # loss can be passed in as a dictionary of Dict[str, Tensor], will be ordered by the `loss_names` passed in on init
 
@@ -172,15 +187,22 @@ class GradNormLossWeighter(Module):
 
         # handle base frozen case, so one can freeze the weights after a certain number of steps, or just to a/b test against learned gradnorm loss weights
 
-        if self.frozen or freeze or not self.training:
+        if (
+            self.frozen or \
+            freeze or \
+            not self.training or \
+            step < self.update_after_step or \
+            (step % self.update_every) != 0
+        ):
             return total_weighted_loss
 
         # store initial loss
 
         if self.has_restoring_force:
-            if self.step.item() == 0:
+            if not self.initted.item():
                 initial_losses = maybe_distributed_mean(losses)
                 self.initial_losses.copy_(initial_losses)
+                self.initted.copy_(True)
 
             elif self.initial_losses_decay < 1.:
                 meaned_losses = maybe_distributed_mean(losses)
@@ -228,10 +250,6 @@ class GradNormLossWeighter(Module):
         # accumulate gradients
 
         self.loss_weights_grad.add_(loss_weights.grad)
-
-        # increment step
-
-        self.step.add_(1)
 
         if not grad_step:
             return
