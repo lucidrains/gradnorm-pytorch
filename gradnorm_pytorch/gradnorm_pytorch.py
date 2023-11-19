@@ -178,6 +178,11 @@ class GradNormLossWeighter(Module):
         if isinstance(losses, (list, tuple)):
             losses = torch.stack(losses)
 
+        # auto move gradnorm module to the device of the losses
+
+        if self.initted.device != losses.device:
+            self.to(losses.device)
+
         assert losses.ndim == 1, 'losses must be 1 dimensional'
         assert losses.numel() == self.num_losses, f'you instantiated with {self.num_losses} losses but passed in {losses.numel()} losses'
 
