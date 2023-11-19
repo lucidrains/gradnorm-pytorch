@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'gradnorm-pytorch',
   packages = find_packages(exclude=[]),
-  version = '0.0.20',
+  version = '0.0.21',
   license='MIT',
   description = 'GradNorm - Pytorch',
   author = 'Phil Wang',

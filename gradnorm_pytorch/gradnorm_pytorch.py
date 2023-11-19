@@ -155,7 +155,7 @@ class GradNormLossWeighter(Module):
 
         step = self.step.item()
 
-        self.step.add_(int(grad_step))
+        self.step.add_(int(self.training and grad_step))
 
         # loss can be passed in as a dictionary of Dict[str, Tensor], will be ordered by the `loss_names` passed in on init
 
