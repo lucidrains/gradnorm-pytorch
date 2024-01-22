@@ -38,7 +38,7 @@ def maybe_distributed_mean(t):
     if not is_distributed():
         return t
 
-    return dist.all_reduce(t, dist.ReduceOp.MEAN)
+    return dist.all_reduce(t) / dist.get_world_size()
 
 # main class
 
