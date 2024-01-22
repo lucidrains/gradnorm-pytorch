@@ -148,7 +148,7 @@ class GradNormLossWeighter(Module):
     ):
         # backward functions dependent on whether using hf accelerate or not
 
-        backward = self.accelerator.backward if exists(self.accelerator) else lambda l: l.backward()
+        backward = self.accelerator.backward if exists(self.accelerator) else lambda l, **kwargs: l.backward(**kwargs)
         backward = partial(backward, **backward_kwargs)
 
         # increment step
