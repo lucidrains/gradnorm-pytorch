@@ -22,6 +22,7 @@ $ pip install gradnorm-pytorch
 
 ```python
 import torch
+from torch.optim import Adam
 
 from gradnorm_pytorch import (
     GradNormLossWeighter,
@@ -34,6 +35,8 @@ network = MockNetworkWithMultipleLosses(
     dim = 512,
     num_losses = 4
 )
+
+optim = Adam(network.parameters(), lr = 3e-4)
 
 # backbone shared parameter
 
@@ -56,11 +59,40 @@ losses, backbone_output_activations = network(mock_input)
 # backwards with the loss weights
 # will update on each backward based on gradnorm algorithm
 
-loss_weighter.backward(losses, retain_graph = True)
+loss_weighter.backward(losses)
 
-# if you would like to update the loss weights wrt activations just do the following instead
+# the usual
+
+optim.step()
+optim.zero_grad()
+```
+
+You can also do it with respect to the gradients flowing through an intermediate activation, say a generated modality
+
+```python
+
+# same as above ...
+
+loss_weighter = GradNormLossWeighter(
+    num_losses = 4,
+    learning_rate = 1e-4,
+    restoring_force_alpha = 0.,
+    grad_norm_parameters = None # this is now None and the activations need to be returned on network forward and passed in on backwards
+)
+
+# mock input
+
+mock_input = torch.randn(2, 512)
+losses, backbone_output_activations = network(mock_input)
+
+# backwards with the loss weights and backbone activations from which gradients backpropagate through from all losses
 
 loss_weighter.backward(losses, backbone_output_activations)
+
+# optimizer
+
+optim.step()
+optim.zero_grad()
 ```
 
 You can also switch it to basic static loss weighting, in case you want to run experiments against fixed weighting.

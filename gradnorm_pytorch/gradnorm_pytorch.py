@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from functools import cache, partial
 
 import torch
@@ -12,8 +14,7 @@ from einops import rearrange, repeat
 from accelerate import Accelerator
 
 from beartype import beartype
-from beartype.door import is_bearable
-from beartype.typing import Optional, Union, List, Dict, Tuple, NamedTuple
+from beartype.typing import NamedTuple
 
 # helper functions
 
@@ -49,16 +50,13 @@ class GradNormLossWeighter(Module):
     def __init__(
         self,
         *,
-        num_losses: Optional[int] = None,
-        loss_weights: Optional[Union[
-            List[float],
-            Tensor
-        ]] = None,
-        loss_names: Optional[Tuple[str, ...]] = None,
+        num_losses: int | None = None,
+        loss_weights: list[float] | Tensor | None = None,
+        loss_names: tuple[str, ...] | None = None,
         learning_rate = 1e-4,
         restoring_force_alpha = 0.,
-        grad_norm_parameters: Optional[Parameter] = None,
-        accelerator: Optional[Accelerator] = None,
+        grad_norm_parameters: Parameter | None = None,
+        accelerator: Accelerator | None = None,
         frozen = False,
         initial_losses_decay = 1.,
         update_after_step = 0.,
@@ -90,6 +88,9 @@ class GradNormLossWeighter(Module):
 
         self.alpha = restoring_force_alpha
         self.has_restoring_force = self.alpha > 0
+
+        if exists(grad_norm_parameters):
+            assert isinstance(grad_norm_parameters, nn.Parameter), f'`grad_norm_parameters` needs to be a `Parameter` in which it receives gradients from all losses'
 
         self._grad_norm_parameters = [grad_norm_parameters] # hack
 
@@ -133,17 +134,16 @@ class GradNormLossWeighter(Module):
     def backward(self, *args, **kwargs):
         return self.forward(*args, **kwargs)
 
-    @beartype
     def forward(
         self,
-        losses: Union[
-            Dict[str, Tensor],
-            List[Tensor],
-            Tuple[Tensor],
+        losses: (
+            dict[str, Tensor] |
+            list[Tensor] | 
+            tuple[Tensor, ...] |
             Tensor
-        ],
-        activations: Optional[Tensor] = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
-        freeze = False,                           # can optionally freeze the learnable loss weights on forward
+        ),
+        activations: Tensor | None = None,     # in the paper, they used the grad norm of penultimate parameters from a backbone layer. but this could also be activations (say shared image being fed to multiple discriminators)
+        freeze = False,                        # can optionally freeze the learnable loss weights on forward
         scale = 1.,
         grad_step = True,
         **backward_kwargs
