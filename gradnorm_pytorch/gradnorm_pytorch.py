@@ -246,7 +246,7 @@ class GradNormLossWeighter(Module):
 
             relative_training_rate = l1norm(loss_ratio) * self.num_losses
 
-            gradient_target = (grad_norm_average * (relative_training_rate ** self.alpha)).detach()
+            gradient_target = (grad_norm_average * (relative_training_rate ** -self.alpha)).detach()
         else:
             gradient_target = repeat(grad_norm_average, ' -> l', l = self.num_losses).detach()
 
