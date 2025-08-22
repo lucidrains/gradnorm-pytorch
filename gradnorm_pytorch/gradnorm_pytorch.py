@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 from torch.autograd import grad
 import torch.nn.functional as F
-from torch import nn, einsum, Tensor
+from torch import nn, einsum, tensor, Tensor
 from torch.nn import Module, ModuleList, Parameter
 
 from einops import rearrange, repeat
@@ -60,7 +60,8 @@ class GradNormLossWeighter(Module):
         frozen = False,
         initial_losses_decay = 1.,
         update_after_step = 0.,
-        update_every = 1.
+        update_every = 1.,
+        loss_mask: list[bool] | Tensor | None = None
     ):
         super().__init__()
         assert exists(num_losses) or exists(loss_weights)
@@ -110,7 +111,7 @@ class GradNormLossWeighter(Module):
 
         # for renormalizing loss weights at end
 
-        self.register_buffer('loss_weights_sum', self.loss_weights.sum())
+        self.register_buffer('init_loss_weights_for_sum', self.loss_weights.clone())
 
         # for gradient accumulation
 
@@ -119,6 +120,14 @@ class GradNormLossWeighter(Module):
         # step, for maybe having schedules etc
 
         self.register_buffer('step', torch.tensor(0.))
+
+        # mask, for having gradnorm for some losses but not others - True would be to use grad norm. defaults to all True
+
+        if exists(loss_mask):
+            if isinstance(loss_mask, list):
+                loss_mask = tensor(loss_mask)
+
+        self.register_buffer('loss_mask', default(loss_mask, tensor([True] * num_losses)), persistent = False)
 
         # can update less frequently, to save on compute
 
@@ -146,8 +155,15 @@ class GradNormLossWeighter(Module):
         freeze = False,                        # can optionally freeze the learnable loss weights on forward
         scale = 1.,
         grad_step = True,
+        loss_mask: list[bool] | None = None,
         **backward_kwargs
     ):
+
+        if exists(loss_mask):
+            loss_mask = tensor(loss_mask)
+
+        loss_mask = default(loss_mask, self.loss_mask)
+
         # backward functions dependent on whether using hf accelerate or not
 
         backward = self.accelerator.backward if exists(self.accelerator) else lambda l, **kwargs: l.backward(**kwargs)
@@ -199,9 +215,18 @@ class GradNormLossWeighter(Module):
             freeze or \
             not self.training or \
             step < self.update_after_step or \
-            (step % self.update_every) != 0
+            (step % self.update_every) != 0 or \
+            not loss_mask.any()
         ):
             return total_weighted_loss
+
+        # validate loss mask shape
+
+        assert loss_mask.shape == losses.shape
+
+        mask = loss_mask
+
+        losses = losses[mask]
 
         # store initial loss
 
@@ -213,7 +238,7 @@ class GradNormLossWeighter(Module):
 
             elif self.initial_losses_decay < 1.:
                 meaned_losses = maybe_distributed_mean(losses)
-                self.initial_losses.lerp_(meaned_losses, 1. - self.initial_losses_decay)
+                self.initial_losses[mask].lerp_(meaned_losses, 1. - self.initial_losses_decay)
 
         # determine which tensor to get grad norm from
 
@@ -226,7 +251,7 @@ class GradNormLossWeighter(Module):
         # get grad norm with respect to each loss
 
         grad_norms = []
-        loss_weights = self.loss_weights.clone()
+        loss_weights = self.loss_weights[mask].clone()
         loss_weights = Parameter(loss_weights)
 
         for weight, loss in zip(loss_weights, losses):
@@ -242,13 +267,14 @@ class GradNormLossWeighter(Module):
         grad_norm_average = maybe_distributed_mean(grad_norms.mean())
 
         if self.has_restoring_force:
-            loss_ratio = losses.detach() / self.initial_losses
+            loss_ratio = losses.detach() / self.initial_losses[mask]
 
             relative_training_rate = l1norm(loss_ratio) * self.num_losses
 
             gradient_target = (grad_norm_average * (relative_training_rate ** -self.alpha)).detach()
         else:
-            gradient_target = repeat(grad_norm_average, ' -> l', l = self.num_losses).detach()
+            num_losses = mask.sum().item()
+            gradient_target = repeat(grad_norm_average, ' -> l', l = num_losses).detach()
 
         grad_norm_loss = F.l1_loss(grad_norms, gradient_target)
 
@@ -256,17 +282,17 @@ class GradNormLossWeighter(Module):
 
         # accumulate gradients
 
-        self.loss_weights_grad.add_(loss_weights.grad)
+        self.loss_weights_grad[mask].add_(loss_weights.grad)
 
         if not grad_step:
             return
 
         # manually take a single gradient step
 
-        updated_loss_weights = loss_weights - self.loss_weights_grad * self.learning_rate
+        updated_loss_weights = loss_weights - self.loss_weights_grad[mask] * self.learning_rate
 
-        renormalized_loss_weights = l1norm(updated_loss_weights) * self.loss_weights_sum
+        renormalized_loss_weights = l1norm(updated_loss_weights) * self.init_loss_weights_for_sum[mask].sum()
 
-        self.loss_weights.copy_(renormalized_loss_weights)
+        self.loss_weights[mask].copy_(renormalized_loss_weights)
 
-        self.loss_weights_grad.zero_()
+        self.loss_weights_grad[mask].zero_()

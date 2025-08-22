@@ -109,6 +109,19 @@ loss_weighter = GradNormLossWeighter(
 loss_weighter.backward(..., freeze = True)
 ```
 
+To control which loss is subjected to GradNorm, pass in a `list[bool]` with the `loss_mask` kwarg
+
+```python
+loss_weighter = GradNormLossWeighter(
+    loss_mask = [True, True, False, True], # 1st, 2nd, and 4th losses are grad normed
+    ...,
+)
+
+# you can also override on .backward
+
+loss_weighter.backward(..., loss_mask = [True, True, False, False])
+```
+
 For use with <a href="https://huggingface.co/">🤗 Huggingface Accelerate</a>, just pass in the `Accelerator` instance into the keyword `accelerator` on initialization
 
 ex.
