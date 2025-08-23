@@ -142,8 +142,8 @@ loss_weighter = GradNormLossWeighter(
 ## Todo
 
 - [x] take care of gradient accumulation
+- [x] handle freezing of some loss weights, but not others
 - [ ] handle sets of loss weights
-- [ ] handle freezing of some loss weights, but not others
 - [ ] allow for a prior weighting, accounted for when calculating gradient targets
 
 ## Citations
