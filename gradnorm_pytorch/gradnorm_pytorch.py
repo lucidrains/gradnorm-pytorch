@@ -282,7 +282,7 @@ class GradNormLossWeighter(Module):
 
         # accumulate gradients
 
-        self.loss_weights_grad[mask].add_(loss_weights.grad)
+        self.loss_weights_grad[mask] += loss_weights.grad
 
         if not grad_step:
             return
@@ -293,6 +293,6 @@ class GradNormLossWeighter(Module):
 
         renormalized_loss_weights = l1norm(updated_loss_weights) * self.init_loss_weights_for_sum[mask].sum()
 
-        self.loss_weights[mask].copy_(renormalized_loss_weights)
+        self.loss_weights[mask] = renormalized_loss_weights
 
-        self.loss_weights_grad[mask].zero_()
+        self.loss_weights_grad[mask] = 0.
