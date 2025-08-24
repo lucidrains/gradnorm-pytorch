@@ -1,0 +1,14 @@
+{
+  "theme": "dark",
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(poetry:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(gh pr create:*)"
+    ],
+    "deny": []
+  }
+}
