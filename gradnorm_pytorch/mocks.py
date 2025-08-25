@@ -17,7 +17,7 @@ class MockNetworkWithMultipleLosses(nn.Module):
             nn.Linear(dim, 1) for _ in range(num_losses)
         ])
 
-    def forward(self, x):
+    def forward(self, x, return_backbone_outputs = False):
         backbone_output = self.backbone(x)
 
         losses = []
@@ -25,5 +25,8 @@ class MockNetworkWithMultipleLosses(nn.Module):
         for discr in self.discriminators:
             loss = discr(backbone_output)
             losses.append(loss.mean())
+
+        if not return_backbone_outputs:
+            return losses
 
         return losses, backbone_output

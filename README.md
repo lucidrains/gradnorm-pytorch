@@ -54,7 +54,7 @@ loss_weighter = GradNormLossWeighter(
 # mock input
 
 mock_input = torch.randn(2, 512)
-losses, backbone_output_activations = network(mock_input)
+losses = network(mock_input)
 
 # backwards with the loss weights
 # will update on each backward based on gradnorm algorithm
@@ -83,7 +83,7 @@ loss_weighter = GradNormLossWeighter(
 # mock input
 
 mock_input = torch.randn(2, 512)
-losses, backbone_output_activations = network(mock_input)
+losses, backbone_output_activations = network(mock_input, return_backbone_outputs = True)
 
 # backwards with the loss weights and backbone activations from which gradients backpropagate through from all losses
 
