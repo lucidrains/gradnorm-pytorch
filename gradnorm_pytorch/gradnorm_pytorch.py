@@ -147,7 +147,7 @@ class GradNormLossWeighter(Module):
         self,
         losses: (
             dict[str, Tensor] |
-            list[Tensor] | 
+            list[Tensor] |
             tuple[Tensor, ...] |
             Tensor
         ),
@@ -226,8 +226,6 @@ class GradNormLossWeighter(Module):
 
         mask = loss_mask
 
-        losses = losses[mask]
-
         # store initial loss
 
         if self.has_restoring_force:
@@ -238,7 +236,9 @@ class GradNormLossWeighter(Module):
 
             elif self.initial_losses_decay < 1.:
                 meaned_losses = maybe_distributed_mean(losses)
-                self.initial_losses[mask].lerp_(meaned_losses, 1. - self.initial_losses_decay)
+                self.initial_losses.lerp_(meaned_losses, 1. - self.initial_losses_decay)
+
+        losses = losses[mask]
 
         # determine which tensor to get grad norm from
 
